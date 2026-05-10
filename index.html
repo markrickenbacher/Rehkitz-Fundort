@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rehkitz Fundort erfassen</title>
+  <meta name="theme-color" content="#2f6b2f" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f4f7f2;
+      color: #1f2a1f;
+    }
+    .card {
+      max-width: 520px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      padding: 1.25rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-top: 0;
+    }
+    .row {
+      margin-bottom: 1rem;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 0.35rem;
+    }
+    input {
+      width: 100%;
+      padding: 0.8rem;
+      border: 1px solid #cfd8cc;
+      border-radius: 10px;
+      font-size: 1rem;
+      box-sizing: border-box;
+      background: #fafcf9;
+    }
+    button {
+      width: 100%;
+      padding: 1rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 10px;
+      background: #2f6b2f;
+      color: white;
+      cursor: pointer;
+      margin-top: 0.5rem;
+    }
+    button:disabled {
+      background: #9db29d;
+      cursor: not-allowed;
+    }
+    .status {
+      margin: 1rem 0;
+      padding: 0.75rem;
+      background: #eef5ea;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+    .small {
+      font-size: 0.9rem;
+      color: #556;
+    }
+    iframe {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Rehkitz Fundort erfassen</h1>
+    <p class="small">Datum und GPS-Koordinaten werden automatisch erfasst.</p>
+
+    <div class="status" id="status">Tippe auf „Standort erfassen“.</div>
+
+    <div class="row">
+      <label for="datum">Datum</label>
+      <input id="datum" type="text" readonly />
+    </div>
+
+    <div class="row">
+      <label for="latitude">Latitude (WGS84)</label>
+      <input id="latitude" type="text" readonly />
+    </div>
+
+    <div class="row">
+      <label for="longitude">Longitude (WGS84)</label>
+      <input id="longitude" type="text" readonly />
+    </div>
+
+    <div class="row">
+      <label for="accuracy">Genauigkeit (Meter)</label>
+      <input id="accuracy" type="text" readonly />
+    </div>
+
+    <button id="locateBtn" type="button">Standort erfassen</button>
+    <button id="sendBtn" type="button" disabled>An Google Form senden</button>
+
+    <iframe name="hidden_iframe"></iframe>
+  </div>
+
+  <script>
+    const GOOGLE_FORM_ACTION_URL =
+      "https://docs.google.com/forms/d/e/1FAIpQLScoDXJmznfCCSkOtds7VLY38zztmyrw1cgU2iSgJPtcAc1H9g/formResponse";
+
+    const datumInput = document.getElementById("datum");
+    const latInput = document.getElementById("latitude");
+    const lonInput = document.getElementById("longitude");
+    const accuracyInput = document.getElementById("accuracy");
+    const statusBox = document.getElementById("status");
+    const locateBtn = document.getElementById("locateBtn");
+    const sendBtn = document.getElementById("sendBtn");
+
+    let watchId = null;
+    let timeoutId = null;
+    let gotPosition = false;
+
+    function formatDate(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function updateStatus(message) {
+      statusBox.textContent = message;
+    }
+
+    function resetFields() {
+      latInput.value = "";
+      lonInput.value = "";
+      accuracyInput.value = "";
+      sendBtn.disabled = true;
+      gotPosition = false;
+    }
+
+    function stopWatch() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    }
+
+    function setToday() {
+      datumInput.value = formatDate(new Date());
+    }
+
+    function handlePosition(position) {
+      gotPosition = true;
+
+      const lat = position.coords.latitude.toFixed(6);
+      const lon = position.coords.longitude.toFixed(6);
+      const acc = Math.round(position.coords.accuracy);
+
+      latInput.value = lat;
+      lonInput.value = lon;
+      accuracyInput.value = acc;
+
+      updateStatus(`Standort gefunden. Genauigkeit ca. ${acc} m.`);
+      sendBtn.disabled = false;
+
+      if (acc <= 30) {
+        stopWatch();
+      }
+    }
+
+    function handleError(error) {
+      stopWatch();
+
+      let message = "Standort konnte nicht ermittelt werden.";
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          message = "Standortfreigabe wurde verweigert. Bitte im Browser erlauben.";
+          break;
+        case error.POSITION_UNAVAILABLE:
+          message = "Standortinformationen sind derzeit nicht verfügbar.";
+          break;
+        case error.TIMEOUT:
+          message = "Zeitüberschreitung bei der Standortermittlung.";
+          break;
+      }
+
+      updateStatus(message);
+    }
+
+    function startLocation() {
+      setToday();
+      resetFields();
+
+      if (!navigator.geolocation) {
+        updateStatus("Geolocation wird von diesem Browser nicht unterstützt.");
+        return;
+      }
+
+      const isSecure =
+        location.protocol === "https:" ||
+        location.hostname === "localhost" ||
+        location.hostname === "127.0.0.1";
+
+      if (!isSecure) {
+        updateStatus("Diese Seite muss über HTTPS geöffnet werden, sonst blockiert der Browser den Standortzugriff.");
+        return;
+      }
+
+      updateStatus("Standort wird ermittelt… Bitte Freigabe erlauben und kurz warten.");
+
+      watchId = navigator.geolocation.watchPosition(
+        handlePosition,
+        handleError,
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 10000
+        }
+      );
+
+      timeoutId = setTimeout(() => {
+        if (!gotPosition) {
+          stopWatch();
+          updateStatus("Kein Standort erhalten. Bitte draußen testen, GPS aktivieren oder Seite neu laden.");
+        }
+      }, 15000);
+    }
+
+    function submitToGoogleForm() {
+      if (!datumInput.value || !latInput.value || !lonInput.value) {
+        alert("Bitte zuerst einen Standort erfassen.");
+        return;
+      }
+
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = GOOGLE_FORM_ACTION_URL;
+      form.target = "hidden_iframe";
+
+      const fields = [
+        { name: "entry.2133523640", value: datumInput.value },
+        { name: "entry.1056871652", value: latInput.value },
+        { name: "entry.1495036116", value: lonInput.value }
+      ];
+
+      fields.forEach(field => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = field.name;
+        input.value = field.value;
+        form.appendChild(input);
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+
+      updateStatus("Daten wurden an die Google Form gesendet.");
+      alert("Eintrag wurde gesendet.");
+    }
+
+    locateBtn.addEventListener("click", startLocation);
+    sendBtn.addEventListener("click", submitToGoogleForm);
+
+    setToday();
+  </script>
+</body>
+</html>
