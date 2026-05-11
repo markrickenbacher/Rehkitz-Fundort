@@ -1,0 +1,20 @@
+{
+  "name": "Rehkitz Fundort erfassen",
+  "short_name": "Rehkitz",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f2",
+  "theme_color": "#2f6b2f",
+  "icons": [
+    {
+      "src": "logo-jg-oltingen.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo-jg-oltingen.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
