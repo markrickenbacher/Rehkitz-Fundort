@@ -107,170 +107,177 @@
     <iframe name="hidden_iframe"></iframe>
   </div>
 
-  <script>
-    const GOOGLE_FORM_ACTION_URL =
-      "https://docs.google.com/forms/d/e/1FAIpQLScoDXJmznfCCSkOtds7VLY38zztmyrw1cgU2iSgJPtcAc1H9g/formResponse";
+<script>
+  const GOOGLE_FORM_ACTION_URL =
+    "https://docs.google.com/forms/d/e/1FAIpQLScoDXJmznfCCSkOtds7VLY38zztmyrw1cgU2iSgJPtcAc1H9g/formResponse";
 
-    const datumInput = document.getElementById("datum");
-    const latInput = document.getElementById("latitude");
-    const lonInput = document.getElementById("longitude");
-    const accuracyInput = document.getElementById("accuracy");
-    const statusBox = document.getElementById("status");
-    const locateBtn = document.getElementById("locateBtn");
-    const sendBtn = document.getElementById("sendBtn");
+  const datumInput = document.getElementById("datum");
+  const latInput = document.getElementById("latitude");
+  const lonInput = document.getElementById("longitude");
+  const accuracyInput = document.getElementById("accuracy");
+  const statusBox = document.getElementById("status");
+  const locateBtn = document.getElementById("locateBtn");
+  const sendBtn = document.getElementById("sendBtn");
 
-    let watchId = null;
-    let timeoutId = null;
-    let gotPosition = false;
+  let watchId = null;
+  let timeoutId = null;
+  let gotPosition = false;
 
-    function formatDate(date) {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, "0");
-      const d = String(date.getDate()).padStart(2, "0");
-      return `${y}-${m}-${d}`;
+  function formatDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function updateStatus(message) {
+    statusBox.textContent = message;
+  }
+
+  function resetFields() {
+    latInput.value = "";
+    lonInput.value = "";
+    accuracyInput.value = "";
+    sendBtn.disabled = true;
+    gotPosition = false;
+  }
+
+  function stopWatch() {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
     }
-
-    function updateStatus(message) {
-      statusBox.textContent = message;
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
     }
+  }
 
-    function resetFields() {
-      latInput.value = "";
-      lonInput.value = "";
-      accuracyInput.value = "";
-      sendBtn.disabled = true;
-      gotPosition = false;
-    }
+  function setToday() {
+    datumInput.value = formatDate(new Date());
+  }
 
-    function stopWatch() {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    }
+  function normalizeCoordinate(value) {
+    return String(value).replace(",", ".").trim();
+  }
 
-    function setToday() {
-      datumInput.value = formatDate(new Date());
-    }
+  function handlePosition(position) {
+    gotPosition = true;
 
-    function handlePosition(position) {
-      gotPosition = true;
+    const lat = normalizeCoordinate(position.coords.latitude.toFixed(6));
+    const lon = normalizeCoordinate(position.coords.longitude.toFixed(6));
+    const acc = Math.round(position.coords.accuracy);
 
-      const lat = position.coords.latitude.toFixed(6);
-      const lon = position.coords.longitude.toFixed(6);
-      const acc = Math.round(position.coords.accuracy);
+    latInput.value = lat;
+    lonInput.value = lon;
+    accuracyInput.value = acc;
 
-      latInput.value = lat;
-      lonInput.value = lon;
-      accuracyInput.value = acc;
+    updateStatus(`Standort gefunden. Genauigkeit ca. ${acc} m.`);
+    sendBtn.disabled = false;
 
-      updateStatus(`Standort gefunden. Genauigkeit ca. ${acc} m.`);
-      sendBtn.disabled = false;
-
-      if (acc <= 30) {
-        stopWatch();
-      }
-    }
-
-    function handleError(error) {
+    if (acc <= 30) {
       stopWatch();
+    }
+  }
 
-      let message = "Standort konnte nicht ermittelt werden.";
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          message = "Standortfreigabe wurde verweigert. Bitte im Browser erlauben.";
-          break;
-        case error.POSITION_UNAVAILABLE:
-          message = "Standortinformationen sind derzeit nicht verfügbar.";
-          break;
-        case error.TIMEOUT:
-          message = "Zeitüberschreitung bei der Standortermittlung.";
-          break;
-      }
+  function handleError(error) {
+    stopWatch();
 
-      updateStatus(message);
+    let message = "Standort konnte nicht ermittelt werden.";
+    switch (error.code) {
+      case error.PERMISSION_DENIED:
+        message = "Standortfreigabe wurde verweigert. Bitte im Browser erlauben.";
+        break;
+      case error.POSITION_UNAVAILABLE:
+        message = "Standortinformationen sind derzeit nicht verfügbar.";
+        break;
+      case error.TIMEOUT:
+        message = "Zeitüberschreitung bei der Standortermittlung.";
+        break;
     }
 
-    function startLocation() {
-      setToday();
-      resetFields();
+    updateStatus(message);
+  }
 
-      if (!navigator.geolocation) {
-        updateStatus("Geolocation wird von diesem Browser nicht unterstützt.");
-        return;
-      }
-
-      const isSecure =
-        location.protocol === "https:" ||
-        location.hostname === "localhost" ||
-        location.hostname === "127.0.0.1";
-
-      if (!isSecure) {
-        updateStatus("Diese Seite muss über HTTPS geöffnet werden, sonst blockiert der Browser den Standortzugriff.");
-        return;
-      }
-
-      updateStatus("Standort wird ermittelt… Bitte Freigabe erlauben und kurz warten.");
-
-      watchId = navigator.geolocation.watchPosition(
-        handlePosition,
-        handleError,
-        {
-          enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 10000
-        }
-      );
-
-      timeoutId = setTimeout(() => {
-        if (!gotPosition) {
-          stopWatch();
-          updateStatus("Kein Standort erhalten. Bitte draußen testen, GPS aktivieren oder Seite neu laden.");
-        }
-      }, 15000);
-    }
-
-    function submitToGoogleForm() {
-      if (!datumInput.value || !latInput.value || !lonInput.value) {
-        alert("Bitte zuerst einen Standort erfassen.");
-        return;
-      }
-
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = GOOGLE_FORM_ACTION_URL;
-      form.target = "hidden_iframe";
-
-      const fields = [
-        { name: "entry.2133523640", value: datumInput.value },
-        { name: "entry.1056871652", value: latInput.value },
-        { name: "entry.1495036116", value: lonInput.value }
-      ];
-
-      fields.forEach(field => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = field.name;
-        input.value = field.value;
-        form.appendChild(input);
-      });
-
-      document.body.appendChild(form);
-      form.submit();
-      document.body.removeChild(form);
-
-      updateStatus("Daten wurden an die Google Form gesendet.");
-      alert("Eintrag wurde gesendet.");
-    }
-
-    locateBtn.addEventListener("click", startLocation);
-    sendBtn.addEventListener("click", submitToGoogleForm);
-
+  function startLocation() {
     setToday();
-  </script>
+    resetFields();
+
+    if (!navigator.geolocation) {
+      updateStatus("Geolocation wird von diesem Browser nicht unterstützt.");
+      return;
+    }
+
+    const isSecure =
+      location.protocol === "https:" ||
+      location.hostname === "localhost" ||
+      location.hostname === "127.0.0.1";
+
+    if (!isSecure) {
+      updateStatus("Diese Seite muss über HTTPS geöffnet werden, sonst blockiert der Browser den Standortzugriff.");
+      return;
+    }
+
+    updateStatus("Standort wird ermittelt… Bitte Freigabe erlauben und kurz warten.");
+
+    watchId = navigator.geolocation.watchPosition(
+      handlePosition,
+      handleError,
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+      }
+    );
+
+    timeoutId = setTimeout(() => {
+      if (!gotPosition) {
+        stopWatch();
+        updateStatus("Kein Standort erhalten. Bitte draußen testen, GPS aktivieren oder Seite neu laden.");
+      }
+    }, 15000);
+  }
+
+  function submitToGoogleForm() {
+    if (!datumInput.value || !latInput.value || !lonInput.value) {
+      alert("Bitte zuerst einen Standort erfassen.");
+      return;
+    }
+
+    const latValue = normalizeCoordinate(latInput.value);
+    const lonValue = normalizeCoordinate(lonInput.value);
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = GOOGLE_FORM_ACTION_URL;
+    form.target = "hidden_iframe";
+
+    const fields = [
+      { name: "entry.2133523640", value: datumInput.value },
+      { name: "entry.1056871652", value: "'" + latValue },
+      { name: "entry.1495036116", value: "'" + lonValue }
+    ];
+
+    fields.forEach(field => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = field.name;
+      input.value = field.value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+
+    updateStatus("Daten wurden an die Google Form gesendet.");
+    alert("Eintrag wurde gesendet.");
+  }
+
+  locateBtn.addEventListener("click", startLocation);
+  sendBtn.addEventListener("click", submitToGoogleForm);
+
+  setToday();
+</script>
 </body>
 </html>
